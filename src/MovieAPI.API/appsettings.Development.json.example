@@ -1,0 +1,21 @@
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  },
+  "AllowedHosts": "*",
+  "TmdbSettings": {
+    "BaseUrl": "https://api.themoviedb.org/3/",
+    "ApiKey": "your_tmdb_api_key"
+  },
+  "Jwt": {
+    "Key": "your-secret-key-minimum-32-characters-long",
+    "Issuer": "MovieAPI",
+    "Audience": "MovieAPIUsers"
+  },
+  "Cors": {
+    "AllowedOrigins": ["http://localhost:5173", "http://localhost:3000"]
+  }
+}

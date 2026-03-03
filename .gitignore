@@ -1,0 +1,48 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+*.cache
+*.dll
+*.exe
+*.pdb
+*.log
+.vs/
+.vscode/
+*.DotSettings.user
+
+# Secrets & Config
+appsettings.json
+appsettings.*.json
+!appsettings.Development.json.example
+.env
+.env.local
+.env.production
+.env.docker
+.https/
+
+# Frontend
+node_modules/
+dist/
+.env
+.env.local
+.env.production
+*.tsbuildinfo
+vite.config.d.ts
+
+# Local diagnostics
+build_errors*.txt
+build_logs*.txt
+verify.json
+frontend/errors.txt
+frontend/ts_errors.txt
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# OS
+.DS_Store
+Thumbs.db
