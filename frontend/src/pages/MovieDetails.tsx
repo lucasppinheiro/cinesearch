@@ -1,228 +1,49 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { ArrowLeft, CalendarDays, Clapperboard, Clock3, Film, Play, Star, Users } from 'lucide-react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { getMovieDetails } from '../services/movieApi';
-import { TmdbMovieDetails } from '../types/movie';
+import type { TmdbMovieDetails } from '../types/movie';
+
+const imageUrl = (path: string | null | undefined, size = 'w500') => path ? `https://image.tmdb.org/t/p/${size}${path}` : null;
 
 const MovieDetails: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
-    const location = useLocation();
-    const queryParams = new URLSearchParams(location.search);
-    const type = queryParams.get('type') || 'movie';
+    const type = new URLSearchParams(useLocation().search).get('type') || 'movie';
     const [movie, setMovie] = useState<TmdbMovieDetails | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        const fetchDetails = async () => {
-            if (!id) return;
-
-            try {
-                const data = await getMovieDetails(id, type);
-                if (data && data.id) {
-                    setMovie(data);
-                } else {
-                    setError('Filme não encontrado.');
-                }
-            } catch {
-                setError('Erro ao carregar os detalhes.');
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchDetails();
+        if (!id) return;
+        void getMovieDetails(id, type).then((data) => setMovie(data?.id ? data : null)).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : 'Não foi possível carregar este título.')).finally(() => setLoading(false));
         window.scrollTo(0, 0);
     }, [id, type]);
 
-    const getImageUrl = (path: string | null | undefined, size: string = 'w500') => {
-        if (!path) return null;
-        return `https://image.tmdb.org/t/p/${size}${path}`;
-    };
+    if (loading) return <div className="flex min-h-dvh items-center justify-center bg-[#0c0c0e] text-stone-400"><div className="w-56 space-y-3"><div className="h-4 w-20 rounded bg-[#24242a]" /><div className="h-9 rounded bg-[#24242a]" /><div className="h-4 rounded bg-[#24242a]" /></div></div>;
+    if (error || !movie) return <div className="flex min-h-dvh items-center justify-center bg-[#0c0c0e] px-5 text-white"><div className="max-w-md rounded-2xl border border-white/10 bg-[#17171b] p-8 text-center"><Clapperboard className="mx-auto text-orange-400" size={32} /><h1 className="text-balance mt-4 text-2xl font-bold">Não encontramos este título.</h1><p className="text-pretty mt-3 text-stone-400">{error || 'Ele pode não estar mais disponível no catálogo.'}</p><button className="mt-6 rounded-lg bg-orange-500 px-5 py-3 font-bold text-zinc-950" onClick={() => navigate('/')}>Voltar ao catálogo</button></div></div>;
 
-    if (loading) return (
-        <div className="min-h-screen bg-background-dark flex flex-col items-center justify-center text-white gap-4">
-            <span className="material-symbols-outlined text-4xl animate-spin text-primary">progress_activity</span>
-            <p>Carregando detalhes...</p>
-        </div>
-    );
+    const title = movie.title || movie.name || 'Sem título';
+    const year = (movie.release_date || movie.first_air_date)?.slice(0, 4) || '—';
+    const creator = type === 'tv' ? movie.created_by?.map((person) => person.name).join(', ') : movie.credits?.crew?.find((person) => person.job === 'Director')?.name;
+    const backdrop = imageUrl(movie.backdrop_path, 'original') || imageUrl(movie.poster_path, 'original');
+    const trailer = movie.videos?.results.find((video) => video.site === 'YouTube' && video.type === 'Trailer');
+    const recommendations = movie.recommendations?.results?.slice(0, 6) ?? [];
 
-    if (error || !movie) return (
-        <div className="min-h-screen bg-background-dark flex flex-col items-center justify-center text-white">
-            <div className="bg-primary/10 border border-primary/20 p-8 rounded-xl text-center max-w-md">
-                <span className="material-symbols-outlined text-error text-5xl mb-4">error</span>
-                <h2 className="text-xl font-bold mb-2">Ops!</h2>
-                <p className="text-slate-400 mb-6">{error || 'Filme não encontrado'}</p>
-                <button
-                    onClick={() => navigate('/')}
-                    className="bg-primary hover:bg-primary/90 text-white px-6 py-2 rounded-lg font-semibold transition-colors"
-                >
-                    Voltar para Home
-                </button>
+    return <div className="min-h-dvh bg-[#0c0c0e] text-stone-100">
+        <header className="border-b border-white/10 bg-[#101014]"><div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 sm:px-8"><button aria-label="Voltar" onClick={() => navigate(-1)} className="flex items-center gap-2 text-sm font-semibold text-stone-300 hover:text-white"><ArrowLeft size={18} /> Voltar</button><button onClick={() => navigate('/')} className="flex items-center gap-2 font-bold text-white"><span className="flex size-8 items-center justify-center rounded-lg bg-orange-500 text-zinc-950"><Film size={18} /></span>CineSearch</button></div></header>
+        <main>
+            <section className="relative isolate overflow-hidden border-b border-white/10 bg-[#17171b]">
+                {backdrop && <img src={backdrop} alt="" className="absolute inset-0 -z-10 h-full w-full object-cover opacity-20" />}
+                <div className="mx-auto grid max-w-7xl gap-8 px-5 py-10 sm:px-8 md:grid-cols-[220px_1fr] md:py-16">
+                    <div className="mx-auto w-44 md:mx-0 md:w-full">{movie.poster_path ? <img src={imageUrl(movie.poster_path)!} alt={`Poster de ${title}`} className="aspect-[2/3] w-full rounded-xl object-cover shadow-2xl" /> : <div className="flex aspect-[2/3] items-center justify-center rounded-xl bg-[#24242a] text-stone-500"><Clapperboard size={35} /></div>}</div>
+                    <div className="self-end"><p className="text-sm font-semibold text-orange-400">{type === 'tv' ? 'SÉRIE' : 'FILME'} · {year}</p><h1 className="text-balance mt-3 text-4xl font-bold leading-tight text-white sm:text-6xl">{title}</h1><div className="mt-5 flex flex-wrap gap-3 text-sm text-stone-300"><span className="inline-flex items-center gap-1 rounded-md bg-white/10 px-2.5 py-1 tabular-nums"><Star size={15} className="fill-orange-400 text-orange-400" />{movie.vote_average?.toFixed(1) || '—'}</span>{movie.runtime ? <span className="inline-flex items-center gap-1"><Clock3 size={16} />{movie.runtime} min</span> : null}{movie.number_of_seasons ? <span>{movie.number_of_seasons} temporada{movie.number_of_seasons > 1 ? 's' : ''}</span> : null}<span>{movie.genres?.map((genre) => genre.name).join(' · ') || 'Gênero indisponível'}</span></div><p className="text-pretty mt-6 max-w-3xl text-base leading-7 text-stone-300">{movie.overview || 'Nenhuma sinopse foi disponibilizada para este título.'}</p>{trailer && <a className="mt-7 inline-flex items-center gap-2 rounded-lg bg-orange-500 px-5 py-3 text-sm font-bold text-zinc-950 hover:bg-orange-400" href={`https://www.youtube.com/watch?v=${trailer.key}`} target="_blank" rel="noreferrer"><Play size={17} fill="currentColor" />Assistir trailer</a>}</div>
+                </div>
+            </section>
+            <div className="mx-auto max-w-7xl px-5 py-12 sm:px-8">
+                <div className="grid gap-12 lg:grid-cols-[1fr_290px]"><div className="space-y-12"><section><h2 className="flex items-center gap-2 text-2xl font-bold text-white"><Users size={21} className="text-orange-400" />Elenco principal</h2><div className="mt-6 flex gap-4 overflow-x-auto pb-3">{(movie.credits?.cast ?? []).slice(0, 8).map((actor) => <div key={`${actor.name}-${actor.character}`} className="w-24 shrink-0"><div className="aspect-square overflow-hidden rounded-full bg-[#24242a]">{actor.profile_path ? <img src={imageUrl(actor.profile_path, 'w185')!} alt={actor.name} className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-stone-500"><Users size={22} /></div>}</div><p className="mt-3 truncate text-sm font-semibold text-white">{actor.name}</p><p className="line-clamp-2 mt-1 text-xs text-stone-500">{actor.character || 'Elenco'}</p></div>)}</div></section>{recommendations.length > 0 && <section><h2 className="flex items-center gap-2 text-2xl font-bold text-white"><Clapperboard size={21} className="text-orange-400" />Se você gostou deste</h2><div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">{recommendations.map((item) => <button type="button" key={item.id} onClick={() => navigate(`/movie/${item.id}?type=${type}`)} className="poster-card text-left"><div className="aspect-[2/3] overflow-hidden rounded-xl bg-[#202026]">{item.poster_path ? <img src={imageUrl(item.poster_path)!} alt={item.title || item.name} className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-stone-500"><Clapperboard size={24} /></div>}</div><p className="mt-3 truncate text-sm font-semibold text-white">{item.title || item.name}</p></button>)}</div></section>}</div><aside className="h-fit rounded-xl border border-white/10 bg-[#17171b] p-6"><h2 className="text-lg font-bold text-white">Ficha técnica</h2><dl className="mt-5 space-y-5 text-sm"><div><dt className="text-stone-500">{type === 'tv' ? 'Criador' : 'Direção'}</dt><dd className="mt-1 font-semibold text-stone-200">{creator || 'Não informado'}</dd></div><div><dt className="flex items-center gap-1 text-stone-500"><CalendarDays size={14} />Lançamento</dt><dd className="mt-1 font-semibold text-stone-200">{year}</dd></div>{movie.budget ? <div><dt className="text-stone-500">Orçamento</dt><dd className="mt-1 font-semibold text-stone-200 tabular-nums">US$ {(movie.budget / 1_000_000).toFixed(1)} mi</dd></div> : null}{movie.revenue ? <div><dt className="text-stone-500">Bilheteria</dt><dd className="mt-1 font-semibold text-stone-200 tabular-nums">US$ {(movie.revenue / 1_000_000).toFixed(1)} mi</dd></div> : null}</dl></aside></div>
             </div>
-        </div>
-    );
-
-    const director = type === 'tv' && movie.created_by && movie.created_by.length > 0
-        ? movie.created_by.map(c => c.name).join(', ')
-        : movie.credits?.crew?.find(c => c.job === 'Director')?.name || 'Desconhecido';
-
-    const majorCast = movie.credits?.cast?.slice(0, 5) || [];
-    const genres = movie.genres?.map(g => g.name).join(', ') || 'Nenhum';
-    const releaseYear = (movie.release_date || movie.first_air_date)
-        ? new Date((movie.release_date || movie.first_air_date)!).getFullYear()
-        : 'N/A';
-
-    const backdropUrl = getImageUrl(movie.backdrop_path, 'original') || getImageUrl(movie.poster_path, 'original');
-
-    return (
-        <div className="relative flex h-auto min-h-screen w-full flex-col overflow-x-hidden bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100">
-            <header className="sticky top-0 z-50 w-full border-b border-primary/20 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-md px-6 md:px-10 py-3">
-                <div className="max-w-7xl mx-auto flex items-center justify-between whitespace-nowrap">
-                    <div className="flex items-center gap-8">
-                        <div className="flex items-center gap-2 text-primary cursor-pointer border-r border-white/10 pr-6" onClick={() => navigate(-1)}>
-                            <span className="material-symbols-outlined text-2xl">arrow_back</span>
-                            <span className="text-white text-sm font-bold tracking-tight hidden md:inline">Voltar</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-primary cursor-pointer" onClick={() => navigate('/')}>
-                            <span className="material-symbols-outlined text-3xl">movie_filter</span>
-                            <h2 className="text-slate-900 dark:text-white text-xl font-bold leading-tight tracking-tight hidden sm:block">CineSearch</h2>
-                        </div>
-                    </div>
-                </div>
-            </header>
-
-            <main className="flex-1">
-                <section className="relative w-full aspect-[21/9] min-h-[500px] flex items-end">
-                    <div className="absolute inset-0 z-0 bg-neutral-dark">
-                        {backdropUrl && (
-                            <img className="w-full h-full object-cover opacity-60" alt={movie.title || movie.name} src={backdropUrl} />
-                        )}
-                        <div className="absolute inset-0 bg-gradient-to-t from-background-dark via-background-dark/60 to-transparent"></div>
-                        <div className="absolute inset-0 bg-gradient-to-r from-background-dark/90 via-background-dark/50 to-transparent"></div>
-                    </div>
-
-                    <div className="relative z-10 w-full max-w-7xl mx-auto px-6 md:px-10 pb-12">
-                        <div className="max-w-3xl space-y-6">
-                            <h1 className="text-5xl md:text-7xl font-black text-white leading-tight drop-shadow-lg">
-                                {movie.title || movie.name}
-                            </h1>
-                            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-slate-200 font-medium">
-                                <div className="flex items-center gap-1 text-primary">
-                                    <span className="material-symbols-outlined fill-1">star</span>
-                                    <span className="text-lg">{movie.vote_average ? movie.vote_average.toFixed(1) : 'N/A'}</span>
-                                </div>
-                                <span className="drop-shadow-md">{releaseYear}</span>
-                                <span className="px-1.5 py-0.5 border border-slate-500 rounded text-xs bg-black/50 backdrop-blur">
-                                    {type === 'tv' ? 'Série' : 'Filme'}
-                                </span>
-                                {movie.runtime && <span className="drop-shadow-md">{movie.runtime}m</span>}
-                                {movie.number_of_seasons && <span className="drop-shadow-md">{movie.number_of_seasons} Temporadas</span>}
-                                <span className="drop-shadow-md">{genres}</span>
-                            </div>
-                            <p className="text-slate-200 text-lg leading-relaxed line-clamp-3 drop-shadow-md max-w-2xl">
-                                {movie.overview || 'Sinopse não disponível para este título.'}
-                            </p>
-                            <p className="text-sm text-slate-300">
-                                Dados fornecidos pela API do TMDB para fins acadêmicos.
-                            </p>
-                        </div>
-                    </div>
-                </section>
-
-                <div className="max-w-7xl mx-auto px-6 md:px-10 py-12 space-y-16">
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
-                        <div className="lg:col-span-2 space-y-12">
-                            <section>
-                                <h3 className="text-2xl font-bold mb-4 flex items-center gap-2">
-                                    <span className="w-1 h-6 bg-primary rounded-full"></span>
-                                    Sinopse
-                                </h3>
-                                <p className="text-slate-600 dark:text-slate-300 text-lg leading-relaxed">
-                                    {movie.overview || 'Nenhuma sinopse fornecida pela base de dados para este título.'}
-                                </p>
-                            </section>
-
-                            {majorCast.length > 0 && (
-                                <section>
-                                    <h3 className="text-2xl font-bold mb-6 flex items-center gap-2">
-                                        <span className="w-1 h-6 bg-primary rounded-full"></span>
-                                        Elenco Principal
-                                    </h3>
-                                    <div className="flex flex-wrap gap-8">
-                                        {majorCast.map((actor, index) => (
-                                            <div key={index} className="flex flex-col items-center gap-3 w-24">
-                                                <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-primary/30 flex-shrink-0 bg-neutral-dark">
-                                                    {actor.profile_path ? (
-                                                        <img className="w-full h-full object-cover" alt={actor.name} src={getImageUrl(actor.profile_path, 'w185')!} />
-                                                    ) : (
-                                                        <div className="flex items-center justify-center w-full h-full text-slate-500">
-                                                            <span className="material-symbols-outlined text-3xl">person</span>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                <p className="text-center text-sm font-semibold leading-tight">{actor.name}</p>
-                                                <p className="text-center text-xs text-slate-500 leading-tight line-clamp-2">{actor.character}</p>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </section>
-                            )}
-                        </div>
-
-                        <aside className="space-y-6">
-                            <h3 className="text-2xl font-bold flex items-center gap-2">
-                                <span className="w-1 h-6 bg-primary rounded-full"></span>
-                                Detalhes
-                            </h3>
-
-                            {movie.poster_path && (
-                                <div className="hidden lg:block aspect-[2/3] rounded-xl overflow-hidden shadow-2xl border border-white/10 w-48 mb-6">
-                                    <img className="w-full h-full object-cover" alt="Poster" src={getImageUrl(movie.poster_path)!} />
-                                </div>
-                            )}
-
-                            <div className="bg-slate-200 dark:bg-primary/5 border border-primary/10 p-6 rounded-xl space-y-4">
-                                <h4 className="font-bold border-b border-primary/20 pb-2 text-white">Ficha Técnica</h4>
-                                <div className="grid grid-cols-2 gap-4 text-sm">
-                                    <div className="col-span-2">
-                                        <p className="text-slate-500">{type === 'tv' ? 'Criador' : 'Diretor'}</p>
-                                        <p className="font-semibold text-white">{director}</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-slate-500">Lançamento</p>
-                                        <p className="font-semibold text-white">{releaseYear}</p>
-                                    </div>
-                                    {movie.budget ? (
-                                        <div>
-                                            <p className="text-slate-500">Orçamento</p>
-                                            <p className="font-semibold text-white">${(movie.budget / 1000000).toFixed(1)}M</p>
-                                        </div>
-                                    ) : null}
-                                    {movie.revenue ? (
-                                        <div>
-                                            <p className="text-slate-500">Bilheteria</p>
-                                            <p className="font-semibold text-white">${(movie.revenue / 1000000).toFixed(1)}M</p>
-                                        </div>
-                                    ) : null}
-                                </div>
-                            </div>
-                        </aside>
-                    </div>
-                </div>
-            </main>
-
-            <footer className="bg-slate-200 dark:bg-background-dark/50 border-t border-primary/10 py-12 px-10">
-                <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
-                    <div className="flex items-center gap-2 text-primary">
-                        <span className="material-symbols-outlined text-2xl">movie_filter</span>
-                        <h2 className="text-lg font-bold text-white">CineSearch</h2>
-                    </div>
-                    <p className="text-slate-500 text-xs text-center md:text-left">© 2026 CineSearch. powered by TMDB.</p>
-                </div>
-            </footer>
-        </div>
-    );
+        </main>
+    </div>;
 };
-
 export default MovieDetails;

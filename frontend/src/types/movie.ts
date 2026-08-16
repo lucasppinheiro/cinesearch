@@ -6,12 +6,15 @@ export interface TmdbMovieResult {
     first_air_date?: string;
     poster_path: string | null;
     media_type?: string;
+    vote_average?: number;
+    overview?: string;
 }
 
 export interface TmdbSearchResponse {
     page: number;
     results: TmdbMovieResult[];
     total_results: number;
+    total_pages?: number;
 }
 
 export interface TmdbGenre {
@@ -53,8 +56,32 @@ export interface TmdbMovieDetails {
     status?: string;
     budget?: number;
     revenue?: number;
+    videos?: TmdbVideos;
+    recommendations?: TmdbSearchResponse;
 }
 
 export interface TmdbCreatedBy {
     name: string;
+}
+
+export interface TmdbVideo {
+    key: string;
+    site: string;
+    type: string;
+    official: boolean;
+}
+
+export interface TmdbVideos {
+    results: TmdbVideo[];
+}
+
+export type MediaType = 'all' | 'movie' | 'tv';
+
+export interface DiscoveryFilters {
+    type: Exclude<MediaType, 'all'>;
+    genres?: string;
+    year?: number;
+    minRating?: number;
+    sortBy?: 'popularity.desc' | 'popularity.asc' | 'vote_average.desc' | 'primary_release_date.desc';
+    page?: number;
 }
