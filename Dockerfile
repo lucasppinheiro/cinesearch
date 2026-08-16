@@ -18,5 +18,6 @@ RUN dotnet publish "MovieAPI.API.csproj" -c Release -o /app/publish
 
 FROM base AS final
 WORKDIR /app
+ENV DOTNET_HOSTBUILDER__RELOADCONFIGONCHANGE=false
 COPY --from=publish /app/publish .
 ENTRYPOINT ["dotnet", "MovieAPI.API.dll"]
