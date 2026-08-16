@@ -4,6 +4,11 @@ Aplicação full-stack para descobrir filmes e séries usando a API do TMDB. O p
 
 > Dados e imagens fornecidos pelo [TMDB](https://www.themoviedb.org/). Este produto usa a API do TMDB, mas não é endossado ou certificado pelo TMDB.
 
+## Demo ao vivo
+
+- [Aplicação](https://cinesearch-jet.vercel.app)
+- [API - health check](https://cinesearch-api-61a5.onrender.com/health)
+
 ## O que é possível fazer
 
 - Buscar filmes, séries ou ambos, com paginação.
@@ -60,4 +65,4 @@ O workflow em `.github/workflows/ci.yml` executa testes, lint, builds e valida a
 2. Importe a pasta `frontend` no Vercel ou Netlify. Configure `VITE_API_URL` com a URL HTTPS da API **no momento do build**.
 3. Após publicar, valide `/health`, busca, filtros, detalhes, trailer e recomendações no navegador.
 
-Nenhuma chave deve ser adicionada ao repositório. Inclua os links públicos desta seção após criar as contas de deploy.
+Nenhuma chave deve ser adicionada ao repositório.
