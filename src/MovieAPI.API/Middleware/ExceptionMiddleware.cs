@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using MovieAPI.Application.Services;
 
 namespace MovieAPI.API.Middleware;
 
@@ -32,14 +33,16 @@ public class ExceptionMiddleware
     private static async Task HandleExceptionAsync(HttpContext context, Exception exception, IWebHostEnvironment env)
     {
         context.Response.ContentType = "application/json";
-        context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
+        context.Response.StatusCode = exception is TmdbRequestException tmdbException
+            ? (int)tmdbException.StatusCode
+            : (int)HttpStatusCode.InternalServerError;
 
         var referenceId = Guid.NewGuid().ToString("N");
 
         var response = new
         {
             Success = false,
-            Message = "Ocorreu um erro interno no servidor.",
+            Message = exception is TmdbRequestException ? exception.Message : "Ocorreu um erro interno no servidor.",
             ReferenceId = referenceId,
             Details = env.IsDevelopment() ? exception.Message : "Detalhes omitidos por segurança. Consulte os logs usando o ReferenceId."
         };

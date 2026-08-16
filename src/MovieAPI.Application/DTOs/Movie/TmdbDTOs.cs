@@ -37,6 +37,15 @@ namespace MovieAPI.Application.DTOs.Movie
 
         [JsonPropertyName("media_type")]
         public string? MediaType { get; set; }
+
+        [JsonPropertyName("vote_average")]
+        public double? VoteAverage { get; set; }
+    }
+
+    public class TmdbPersonCredits
+    {
+        [JsonPropertyName("cast")]
+        public List<TmdbMovieResult> Cast { get; set; } = new();
     }
 
     public class TmdbMovieDetails
@@ -76,6 +85,21 @@ namespace MovieAPI.Application.DTOs.Movie
 
         [JsonPropertyName("created_by")]
         public List<TmdbCreatedBy>? CreatedBy { get; set; }
+
+        [JsonPropertyName("number_of_seasons")]
+        public int? NumberOfSeasons { get; set; }
+
+        [JsonPropertyName("budget")]
+        public long Budget { get; set; }
+
+        [JsonPropertyName("revenue")]
+        public long Revenue { get; set; }
+
+        [JsonPropertyName("videos")]
+        public TmdbVideos Videos { get; set; } = new();
+
+        [JsonPropertyName("recommendations")]
+        public TmdbSearchResponse Recommendations { get; set; } = new();
     }
 
     public class TmdbCreatedBy
@@ -106,6 +130,12 @@ namespace MovieAPI.Application.DTOs.Movie
     {
         [JsonPropertyName("name")]
         public string Name { get; set; } = string.Empty;
+
+        [JsonPropertyName("character")]
+        public string? Character { get; set; }
+
+        [JsonPropertyName("profile_path")]
+        public string? ProfilePath { get; set; }
     }
 
     public class TmdbCrewMember
@@ -115,5 +145,36 @@ namespace MovieAPI.Application.DTOs.Movie
 
         [JsonPropertyName("job")]
         public string Job { get; set; } = string.Empty;
+    }
+
+    public class TmdbVideos
+    {
+        [JsonPropertyName("results")]
+        public List<TmdbVideo> Results { get; set; } = new();
+    }
+
+    public class TmdbVideo
+    {
+        [JsonPropertyName("key")]
+        public string Key { get; set; } = string.Empty;
+
+        [JsonPropertyName("site")]
+        public string Site { get; set; } = string.Empty;
+
+        [JsonPropertyName("type")]
+        public string Type { get; set; } = string.Empty;
+
+        [JsonPropertyName("official")]
+        public bool Official { get; set; }
+    }
+
+    public class MovieDiscoveryQuery
+    {
+        public string Type { get; init; } = "movie";
+        public string? Genres { get; init; }
+        public int? Year { get; init; }
+        public decimal? MinRating { get; init; }
+        public string SortBy { get; init; } = "popularity.desc";
+        public int Page { get; init; } = 1;
     }
 }
