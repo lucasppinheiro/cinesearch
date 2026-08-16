@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: cinesearch-api
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: TmdbSettings__BaseUrl
+        value: https://api.themoviedb.org/3/
+      - key: TmdbSettings__ApiKey
+        sync: false
+      - key: Cors__AllowedOrigins__0
+        sync: false

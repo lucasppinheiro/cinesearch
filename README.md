@@ -1,91 +1,63 @@
 # CineSearch
 
-Aplicação acadêmica para busca e visualização de filmes e séries usando TMDB.
+Aplicação full-stack para descobrir filmes e séries usando a API do TMDB. O projeto foi pensado como portfólio: frontend responsivo em React/TypeScript e API .NET 8, ambos containerizados e com CI.
 
-## Stack
+> Dados e imagens fornecidos pelo [TMDB](https://www.themoviedb.org/). Este produto usa a API do TMDB, mas não é endossado ou certificado pelo TMDB.
 
-- Backend: .NET 8, ASP.NET Core Web API, HttpClient, Swagger, Serilog
-- Frontend: React 19, TypeScript, Vite, React Router
+## O que é possível fazer
 
-## Funcionalidades
+- Buscar filmes, séries ou ambos, com paginação.
+- Descobrir títulos por tipo, gênero, ano, nota mínima e ordenação.
+- Consultar sinopse, elenco, criador/diretor, duração, temporadas, orçamento e bilheteria.
+- Assistir ao trailer no YouTube quando o TMDB o disponibiliza e explorar recomendações.
+- Receber feedback claro quando o catálogo estiver indisponível.
 
-- Busca de filmes e séries (`search/multi` via TMDB)
-- Página de detalhes por tipo (`movie` ou `tv`)
-- Endpoint de health check
-- CORS configurável por ambiente
+## Arquitetura
 
-## Requisitos
-
-- .NET SDK 8
-- Node.js 20+
-- npm
-
-## Configuração
-
-### Backend
-
-Use `src/MovieAPI.API/appsettings.Development.json` com os valores de ambiente local.
-
-Campos principais:
-
-- `TmdbSettings:ApiKey`
-- `TmdbSettings:BaseUrl`
-- `Cors:AllowedOrigins`
-
-### Frontend
-
-Copie `frontend/.env.example` para `frontend/.env`:
-
-```bash
-VITE_API_URL=http://localhost:5171
+```mermaid
+flowchart LR
+  Browser[React + TypeScript] -->|HTTPS /api| API[ASP.NET Core .NET 8]
+  API -->|HTTP com timeout| TMDB[TMDB API]
+  CI[GitHub Actions] --> Browser
+  CI --> API
 ```
 
 ## Execução local
 
-### Backend
+Pré-requisitos: .NET SDK 8, Node.js 20+ e uma chave de API v3 do TMDB.
+
+1. Copie `src/MovieAPI.API/appsettings.Development.json.example` para `appsettings.Development.json` e preencha `TmdbSettings:ApiKey`.
+2. Em um terminal, execute `dotnet run --project src/MovieAPI.API --launch-profile http`.
+3. Em outro terminal, execute `cd frontend`, `npm ci` e `npm run dev`.
+
+O frontend abre em `http://localhost:5173` e a API em `http://localhost:5171`.
+
+### Docker
+
+Copie `.env.docker` para `.env`, defina `TMDB_API_KEY` e execute:
 
 ```bash
-cd src/MovieAPI.API
-dotnet restore
-dotnet run --launch-profile http
+docker compose up --build
 ```
 
-API em `http://localhost:5171`.
+O frontend fica em `http://localhost:5173` e a API em `http://localhost:5000`.
 
-### Frontend
+## Qualidade
 
 ```bash
+dotnet test MovieAPI.sln
 cd frontend
-npm install
-npm run dev
+npm run lint
+npm run test -- --run
+npm run build
 ```
 
-Frontend em `http://localhost:5173` (ou próxima porta livre).
+O workflow em `.github/workflows/ci.yml` executa testes, lint, builds e valida as duas imagens Docker em cada pull request e push para `main`.
 
-## Endpoints
+## Deploy gratuito
 
-- `GET /api/movies/search?query={termo}`
-- `GET /api/movies/{id}?type=movie|tv`
-- `GET /health`
+1. Crie a API pelo blueprint `render.yaml` no Render. Configure `TmdbSettings__ApiKey` e `Cors__AllowedOrigins__0` com a URL final do frontend.
+2. Importe a pasta `frontend` no Vercel ou Netlify. Configure `VITE_API_URL` com a URL HTTPS da API **no momento do build**.
+3. Após publicar, valide `/health`, busca, filtros, detalhes, trailer e recomendações no navegador.
 
-## Docker
-
-Crie um arquivo `.env` na raiz a partir de `.env.docker` e preencha:
-
-- `TMDB_API_KEY`
-- `JWT_SECRET_KEY`
-
-```bash
-docker-compose up -d
-```
-
-## Estrutura
-
-```text
-src/
-  MovieAPI.API/
-  MovieAPI.Application/
-  MovieAPI.Domain/
-  MovieAPI.Infrastructure/
-frontend/
-```
+Nenhuma chave deve ser adicionada ao repositório. Inclua os links públicos desta seção após criar as contas de deploy.
