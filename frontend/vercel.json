@@ -1,4 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "rewrites": [{ "source": "/movie/:id", "destination": "/index.html" }]
+  "rewrites": [
+    {
+      "source": "/api/movies/:path*",
+      "destination": "https://cinesearch-api-61a5.onrender.com/api/movies/:path*"
+    },
+    { "source": "/movie/:id", "destination": "/index.html" }
+  ]
 }
