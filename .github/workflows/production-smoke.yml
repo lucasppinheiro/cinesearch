@@ -1,0 +1,21 @@
+name: Verificar produção
+
+on: workflow_dispatch
+
+permissions:
+  contents: read
+  deployments: read
+
+jobs:
+  smoke:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: frontend/package.json
+      - run: node scripts/smoke-production.mjs "$GITHUB_SHA"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}

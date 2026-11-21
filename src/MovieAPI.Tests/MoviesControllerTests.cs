@@ -24,13 +24,14 @@ public class MoviesControllerTests
     public async Task Discover_forwards_valid_filters_to_service()
     {
         var service = new Mock<IMovieService>();
-        service.Setup(s => s.DiscoverMoviesAsync(It.IsAny<MovieDiscoveryQuery>())).ReturnsAsync(new TmdbSearchResponse());
+        service.Setup(s => s.DiscoverMoviesAsync(It.IsAny<MovieDiscoveryQuery>(), It.IsAny<CancellationToken>())).ReturnsAsync(new TmdbSearchResponse());
         var controller = new MoviesController(service.Object);
         var query = new MovieDiscoveryQuery { Type = "tv", Year = 2024, MinRating = 7, Page = 1, SortBy = "vote_average.desc" };
 
-        var result = await controller.Discover(query);
+        using var cancellation = new CancellationTokenSource();
+        var result = await controller.Discover(query, cancellation.Token);
 
         result.Should().BeOfType<OkObjectResult>();
-        service.Verify(s => s.DiscoverMoviesAsync(query), Times.Once);
+        service.Verify(s => s.DiscoverMoviesAsync(query, cancellation.Token), Times.Once);
     }
 }

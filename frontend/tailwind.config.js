@@ -1,5 +1,4 @@
 import forms from '@tailwindcss/forms';
-import containerQueries from '@tailwindcss/container-queries';
 
 /** @type {import('tailwindcss').Config} */
 export default {
@@ -17,9 +16,6 @@ export default {
         "neutral-dark": "#221610",
         "neutral-muted": "#4a352a",
       },
-      fontFamily: {
-        "display": ["Public Sans", "sans-serif"]
-      },
       borderRadius: {
         "DEFAULT": "0.25rem",
         "lg": "0.5rem",
@@ -28,8 +24,5 @@ export default {
       },
     }
   },
-  plugins: [
-    forms,
-    containerQueries
-  ],
+  plugins: [forms],
 }

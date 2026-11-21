@@ -2,47 +2,20 @@ using System.Diagnostics;
 
 namespace MovieAPI.API.Middleware;
 
-public class RequestLoggingMiddleware
+public class RequestLoggingMiddleware(RequestDelegate next, ILogger<RequestLoggingMiddleware> logger)
 {
-    private readonly RequestDelegate _next;
-    private readonly ILogger<RequestLoggingMiddleware> _logger;
-
-    public RequestLoggingMiddleware(RequestDelegate next, ILogger<RequestLoggingMiddleware> logger)
-    {
-        _next = next;
-        _logger = logger;
-    }
-
     public async Task InvokeAsync(HttpContext context)
     {
-        var stopwatch = Stopwatch.StartNew();
-        var requestPath = context.Request.Path;
-        var requestMethod = context.Request.Method;
+        var started = Stopwatch.GetTimestamp();
 
-        try
-        {
-            await _next(context);
-            stopwatch.Stop();
+        await next(context);
 
-            _logger.LogInformation(
-                "HTTP {Method} {Path} responded {StatusCode} in {ElapsedMilliseconds}ms",
-                requestMethod,
-                requestPath,
-                context.Response.StatusCode,
-                stopwatch.ElapsedMilliseconds
-            );
-        }
-        catch (Exception ex)
+        if (!context.RequestAborted.IsCancellationRequested)
         {
-            stopwatch.Stop();
-            _logger.LogError(
-                ex,
-                "HTTP {Method} {Path} failed after {ElapsedMilliseconds}ms",
-                requestMethod,
-                requestPath,
-                stopwatch.ElapsedMilliseconds
-            );
-            throw;
+            logger.LogInformation(
+                "HTTP {Method} {Path} returned {StatusCode} in {ElapsedMilliseconds}ms ({ReferenceId})",
+                context.Request.Method, context.Request.Path, context.Response.StatusCode,
+                Stopwatch.GetElapsedTime(started).TotalMilliseconds, context.TraceIdentifier);
         }
     }
 }

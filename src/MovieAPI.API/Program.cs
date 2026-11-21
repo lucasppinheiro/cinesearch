@@ -1,156 +1,92 @@
-using System.Text;
+using System.Globalization;
+using System.Net;
 using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.OpenApi.Models;
 using MovieAPI.API.Middleware;
 using MovieAPI.Application.Interfaces;
 using MovieAPI.Application.Services;
-using FluentValidation;
-using FluentValidation.AspNetCore;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Diagnostics.HealthChecks;
-using Microsoft.IdentityModel.Tokens;
-using Microsoft.OpenApi.Models;
-using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Host.UseSerilog((context, configuration) =>
-    configuration.ReadFrom.Configuration(context.Configuration));
+builder.Logging.ClearProviders();
+builder.Logging.AddJsonConsole();
+builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
 
-builder.Services.AddHttpClient<IMovieService, MovieService>();
+builder.Services.AddHttpClient<IMovieService, MovieService>().RemoveAllLoggers();
 
-builder.Services.AddFluentValidationAutoValidation();
+var onRender = builder.Configuration.GetValue<bool>("RENDER");
+var renderHost = builder.Configuration["RENDER_EXTERNAL_HOSTNAME"];
+var renderRevision = builder.Configuration["RENDER_GIT_COMMIT"];
+var allowedOrigins = (builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [])
+    .Select(origin => origin.Trim().TrimEnd('/'))
+    .Where(origin => origin.Length > 0)
+    .ToArray();
 
-var jwtKey = builder.Configuration["Jwt:Key"];
-if (!string.IsNullOrWhiteSpace(jwtKey))
-{
-    builder.Services.AddAuthentication(options =>
-    {
-        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-    })
-    .AddJwtBearer(options =>
-    {
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"],
-            ValidAudience = builder.Configuration["Jwt:Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
-        };
-    });
-}
-
-var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>();
+if (builder.Environment.IsDevelopment() && allowedOrigins.Length == 0)
+    allowedOrigins = ["http://localhost:5173", "https://localhost:5173"];
 
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowSpecificOrigins", policy =>
-    {
-        if (allowedOrigins != null && allowedOrigins.Length > 0)
-        {
-            policy.SetIsOriginAllowed(origin =>
-                  {
-                      if (string.IsNullOrWhiteSpace(origin))
-                          return false;
-
-                      if (Uri.TryCreate(origin, UriKind.Absolute, out var uri) &&
-                          (uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
-                           uri.Host.Equals("127.0.0.1")))
-                          return true;
-
-                      return allowedOrigins.Contains(origin, StringComparer.OrdinalIgnoreCase);
-                  })
-                  .WithMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
-                  .WithHeaders("Content-Type", "Authorization", "X-Requested-With")
-                  .AllowCredentials();
-        }
-        else
-        {
-            policy.WithOrigins("http://localhost:5173", "https://localhost:5173")
-                  .AllowAnyMethod()
-                  .AllowAnyHeader();
-        }
-    });
+    options.AddPolicy("CatalogOrigin", policy => policy
+        .WithOrigins(allowedOrigins)
+        .WithMethods(HttpMethods.Get)
+        .AllowAnyHeader());
 });
 
 builder.Services.AddRateLimiter(options =>
 {
-    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            partitionKey: context.User.Identity?.Name ?? context.Request.Headers.Host.ToString(),
-            factory: partition => new FixedWindowRateLimiterOptions
-            {
-                AutoReplenishment = true,
-                PermitLimit = 100,
-                Window = TimeSpan.FromMinutes(1)
-            }));
+    options.AddPolicy("catalog", context => RateLimitPartition.GetFixedWindowLimiter(
+        GetClientAddress(context, onRender ? renderHost : null),
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 100,
+            Window = TimeSpan.FromMinutes(1)
+        }));
+
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = (context, cancellationToken) =>
+    {
+        if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
+        {
+            context.HttpContext.Response.Headers.RetryAfter =
+                Math.Ceiling(retryAfter.TotalSeconds).ToString(CultureInfo.InvariantCulture);
+        }
+
+        return new ValueTask(context.HttpContext.Response.WriteAsJsonAsync(
+            new { message = "Muitas solicitações. Aguarde um momento e tente novamente." },
+            cancellationToken));
+    };
 });
 
 builder.Services.AddHealthChecks();
-
-builder.Services.AddControllers()
-    .AddJsonOptions(options =>
-    {
-        options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
-    });
-
+builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(c =>
+builder.Services.AddSwaggerGen(options => options.SwaggerDoc("v1", new OpenApiInfo
 {
-    c.SwaggerDoc("v1", new OpenApiInfo
-    {
-        Title = "🎬 Movie API",
-        Version = "v1",
-        Description = "API de Gerenciamento de Filmes — Busque detalhes e informações do mundo do cinema via TMDB.",
-        Contact = new OpenApiContact { Name = "Movie API", Email = "contato@movieviewer.com" }
-    });
-
-    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
-    {
-        Description = "JWT Authorization header usando Bearer. Exemplo: \"Bearer {token}\"",
-        Name = "Authorization",
-        In = ParameterLocation.Header,
-        Type = SecuritySchemeType.ApiKey,
-        Scheme = "Bearer"
-    });
-
-    c.AddSecurityRequirement(new OpenApiSecurityRequirement
-    {
-        {
-            new OpenApiSecurityScheme
-            {
-                Reference = new OpenApiReference
-                {
-                    Type = ReferenceType.SecurityScheme,
-                    Id = "Bearer"
-                }
-            },
-            Array.Empty<string>()
-        }
-    });
-});
+    Title = "CineSearch API",
+    Version = "v1",
+    Description = "Busca, descoberta e detalhes de filmes e séries via TMDB."
+}));
 
 var app = builder.Build();
 
-if (!app.Environment.IsDevelopment())
+// Render terminates TLS before forwarding requests to Kestrel.
+if (!onRender)
 {
-    app.UseHsts();
-}
+    if (!app.Environment.IsDevelopment())
+        app.UseHsts();
 
-app.UseHttpsRedirection();
+    app.UseHttpsRedirection();
+}
 
 app.UseMiddleware<RequestLoggingMiddleware>();
 app.UseMiddleware<ExceptionMiddleware>();
 
 app.Use(async (context, next) =>
 {
-    context.Response.Headers.Append("X-Content-Type-Options", "nosniff");
-    context.Response.Headers.Append("X-Frame-Options", "DENY");
-    context.Response.Headers.Append("X-XSS-Protection", "1; mode=block");
+    context.Response.Headers.XContentTypeOptions = "nosniff";
+    context.Response.Headers.XFrameOptions = "DENY";
     context.Response.Headers.Append("Referrer-Policy", "strict-origin-when-cross-origin");
     context.Response.Headers.Append("Permissions-Policy", "geolocation=(), microphone=()");
 
@@ -160,49 +96,49 @@ app.Use(async (context, next) =>
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
-    app.UseSwaggerUI(c =>
-    {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Movie API v1");
-        c.RoutePrefix = "swagger";
-    });
-}
-else
-{
-    app.MapWhen(context => context.Request.Path.StartsWithSegments("/swagger"),
-        appBuilder => appBuilder.Run(async context =>
-        {
-            context.Response.StatusCode = StatusCodes.Status404NotFound;
-            await context.Response.WriteAsync("Not Found");
-        }));
+    app.UseSwaggerUI();
 }
 
-app.UseCors("AllowSpecificOrigins");
+app.UseCors("CatalogOrigin");
 app.UseRateLimiter();
-if (!string.IsNullOrWhiteSpace(jwtKey))
-    app.UseAuthentication();
-app.UseAuthorization();
 
 app.MapHealthChecks("/health", new HealthCheckOptions
 {
-    ResponseWriter = async (context, report) =>
+    ResponseWriter = (context, report) => context.Response.WriteAsJsonAsync(new
     {
-        context.Response.ContentType = "application/json";
-        var result = System.Text.Json.JsonSerializer.Serialize(new
+        status = report.Status.ToString(),
+        checks = report.Entries.Select(entry => new
         {
-            status = report.Status.ToString(),
-            checks = report.Entries.Select(e => new
-            {
-                name = e.Key,
-                status = e.Value.Status.ToString(),
-                description = e.Value.Description,
-                duration = e.Value.Duration.TotalMilliseconds
-            }),
-            totalDuration = report.TotalDuration.TotalMilliseconds
-        });
-        await context.Response.WriteAsync(result);
-    }
+            name = entry.Key,
+            status = entry.Value.Status.ToString(),
+            description = entry.Value.Description,
+            duration = entry.Value.Duration.TotalMilliseconds
+        }),
+        totalDuration = report.TotalDuration.TotalMilliseconds,
+        commit = renderRevision
+    })
 });
 
 app.MapControllers();
-
 app.Run();
+
+static string GetClientAddress(HttpContext context, string? renderHost)
+{
+    var address = context.Connection.RemoteIpAddress;
+
+    // The public Render ingress overwrites this header. Other hosts use the socket address.
+    if (!string.IsNullOrWhiteSpace(renderHost) &&
+        string.Equals(context.Request.Host.Host, renderHost, StringComparison.OrdinalIgnoreCase) &&
+        context.Request.Headers.TryGetValue("CF-Connecting-IP", out var forwarded) &&
+        forwarded.Count == 1 &&
+        IPAddress.TryParse(forwarded[0], out var clientAddress))
+    {
+        address = clientAddress;
+    }
+
+    return (address?.IsIPv4MappedToIPv6 == true ? address.MapToIPv4() : address)?.ToString() ?? "unknown";
+}
+
+public partial class Program
+{
+}
