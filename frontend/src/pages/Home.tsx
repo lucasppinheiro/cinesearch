@@ -85,7 +85,7 @@ export default function Home() {
     const year = boundedNumber(params.get('year'), 1888, 2100, true);
     const minRating = boundedNumber(params.get('minRating'), 0, 10);
     const sort = params.get('sortBy');
-    const sortBy = sort && Object.hasOwn(sorts, sort) ? sort as keyof typeof sorts : defaultSort;
+    const sortBy = sort && Object.prototype.hasOwnProperty.call(sorts, sort) ? sort as keyof typeof sorts : defaultSort;
     const page = boundedNumber(params.get('page'), 1, 500, true) ?? 1;
     const load = useCallback((signal: AbortSignal) => query
         ? searchMovies(query, page, searchType, minRating, signal)

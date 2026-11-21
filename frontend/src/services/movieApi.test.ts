@@ -1,6 +1,8 @@
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, expect, it, vi } from 'vitest';
 import { discoverMovies, getMovieDetails, searchMovies } from './movieApi';
 
+vi.hoisted(() => vi.stubEnv('VITE_API_URL', ''));
+afterAll(() => vi.unstubAllEnvs());
 afterEach(() => vi.unstubAllGlobals());
 
 it('uses the relative API URL, forwards cancellation, and allows retry after failure', async () => {
