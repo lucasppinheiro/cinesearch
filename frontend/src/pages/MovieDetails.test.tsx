@@ -38,3 +38,25 @@ it('resets a failed recommendation when navigating back to a valid title', async
     expect(await screen.findByRole('heading', { name: 'Duna' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Voltar ao catálogo' })).toHaveAttribute('href', '/');
 });
+
+it('keeps the link back to the catalog available while loading', () => {
+    getDetails.mockImplementation(() => new Promise(() => {}));
+    render(<MemoryRouter initialEntries={[{ pathname: '/movie/1', state: { catalogLocation: '/?page=2' } }]}>
+        <Routes><Route path="/movie/:id" element={<MovieDetails />} /></Routes>
+    </MemoryRouter>);
+
+    expect(screen.getByRole('status')).toHaveTextContent('Carregando detalhes');
+    expect(screen.getByRole('link', { name: 'Voltar ao catálogo' })).toHaveAttribute('href', '/?page=2');
+});
+
+it('shows the technical summary before recommendations in reading order', async () => {
+    getDetails.mockResolvedValue(title);
+    render(<MemoryRouter initialEntries={['/movie/1']}>
+        <Routes><Route path="/movie/:id" element={<MovieDetails />} /></Routes>
+    </MemoryRouter>);
+
+    await screen.findByRole('heading', { name: 'Duna' });
+    const summary = screen.getByRole('heading', { name: 'Ficha técnica' });
+    const recommendations = screen.getByRole('heading', { name: 'Se você gostou deste' });
+    expect(summary.compareDocumentPosition(recommendations) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
