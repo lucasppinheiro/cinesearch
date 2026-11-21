@@ -49,8 +49,9 @@ jobs:
       - run: docker compose up -d --build
       - name: Verificar aplicação no Compose
         run: |
-          curl -fsS --retry 12 --retry-delay 2 --retry-connrefused --max-time 5 http://127.0.0.1:5000/health | jq -e '.status == "Healthy"'
-          curl -fsS --retry 12 --retry-delay 2 --retry-connrefused --max-time 5 http://127.0.0.1:5173/ | grep -F '<div id="root">'
+          curl -fsS --retry 12 --retry-delay 2 --retry-all-errors --max-time 5 -o "$RUNNER_TEMP/catalog-health.json" http://127.0.0.1:5000/health
+          jq -e '.status == "Healthy"' "$RUNNER_TEMP/catalog-health.json"
+          curl -fsS --retry 12 --retry-delay 2 --retry-all-errors --max-time 5 http://127.0.0.1:5173/ | grep -F '<div id="root">'
           curl -fsS 'http://127.0.0.1:5173/movie/550?type=movie' | grep -F '<div id="root">'
           status=$(curl -sS -o "$RUNNER_TEMP/catalog-validation.json" -w '%{http_code}' 'http://127.0.0.1:5173/api/movies/discover?page=0')
           test "$status" = 400
