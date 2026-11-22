@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { Link, MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Home from './Home';
 import { discoverMovies, searchMovies } from '../services/movieApi';
@@ -13,6 +13,7 @@ const payload = { page: 1, total_pages: 3, total_results: 3, results: [{ id: 1, 
 describe('Home', () => {
     beforeEach(() => {
         vi.resetAllMocks();
+        vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
         discoverMoviesMock.mockResolvedValue(payload);
     });
 
@@ -32,6 +33,58 @@ describe('Home', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Próxima página' }));
 
         await waitFor(() => expect(discoverMoviesMock).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 }), expect.any(AbortSignal)));
+        expect(screen.getByRole('heading', { name: 'Em alta agora' })).toHaveFocus();
+    });
+
+    it('starts an actor search in Tudo after exploring series with filters', async () => {
+        searchMoviesMock.mockResolvedValue(payload);
+        render(<MemoryRouter initialEntries={['/?type=tv&minRating=9']}><Home /></MemoryRouter>);
+
+        fireEvent.change(screen.getByRole('searchbox', { name: /busca/i }), { target: { value: 'Fernanda Montenegro' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Buscar' }));
+
+        await waitFor(() => expect(searchMoviesMock).toHaveBeenLastCalledWith('Fernanda Montenegro', 1, 'all', undefined, expect.any(AbortSignal)));
+    });
+
+    it('offers to search in Tudo when a typed search has no results', async () => {
+        searchMoviesMock.mockResolvedValueOnce({ ...payload, results: [] }).mockResolvedValue(payload);
+        render(<MemoryRouter initialEntries={['/?query=Duna&type=tv&page=2']}><Home /></MemoryRouter>);
+
+        fireEvent.click(await screen.findByRole('button', { name: 'Buscar em Tudo' }));
+
+        await waitFor(() => expect(searchMoviesMock).toHaveBeenLastCalledWith('Duna', 1, 'all', undefined, expect.any(AbortSignal)));
+    });
+
+    it('removes individual filters and clears the rest while keeping the media type', async () => {
+        render(<MemoryRouter initialEntries={['/?type=tv&genres=18&year=2024&page=2']}><Home /></MemoryRouter>);
+        fireEvent.click(screen.getByRole('button', { name: 'Remover filtro Drama' }));
+        await waitFor(() => expect(discoverMoviesMock).toHaveBeenLastCalledWith(
+            expect.objectContaining({ type: 'tv', year: 2024, genres: undefined, page: 1 }), expect.any(AbortSignal)));
+        fireEvent.click(screen.getByRole('button', { name: 'Limpar filtros' }));
+        await waitFor(() => expect(discoverMoviesMock).toHaveBeenLastCalledWith(
+            expect.objectContaining({ type: 'tv', year: undefined, page: 1 }), expect.any(AbortSignal)));
+    });
+
+    it.each(['Voltar pelo link', 'Voltar pelo histórico'])('restores the original card when using %s', async (action) => {
+        const bookmarkRef = { current: null };
+        function DetailStub() {
+            const navigate = useNavigate();
+            return <>
+                <Link to="/?page=2" state={{ restoreCatalog: true }}>Voltar pelo link</Link>
+                <button onClick={() => navigate(-1)}>Voltar pelo histórico</button>
+            </>;
+        }
+
+        render(<MemoryRouter initialEntries={['/?page=2']}><Routes>
+            <Route path="/" element={<Home bookmarkRef={bookmarkRef} />} />
+            <Route path="/movie/:id" element={<DetailStub />} />
+        </Routes></MemoryRouter>);
+
+        fireEvent.click((await screen.findByRole('heading', { name: 'Duna', level: 3 })).closest('a')!);
+        fireEvent.click(screen.getByText(action));
+
+        expect((await screen.findByRole('heading', { name: 'Duna', level: 3 })).closest('a')).toHaveFocus();
+        expect(discoverMoviesMock).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 }), expect.any(AbortSignal));
     });
 
     it('retries the same discovery after an error', async () => {
@@ -62,6 +115,8 @@ describe('Home', () => {
 
         expect(await screen.findByText('Nenhum título encontrado nesta página.')).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Próxima página' })).toBeEnabled();
+        fireEvent.click(screen.getByRole('button', { name: 'Editar busca' }));
+        expect(screen.getByRole('searchbox')).toHaveFocus();
     });
 
     it('ignores an older discovery after a successful search', async () => {
@@ -82,7 +137,7 @@ describe('Home', () => {
         render(<MemoryRouter initialEntries={['/?genres=28']}><Home /></MemoryRouter>);
 
         expect(screen.getByLabelText('Gênero')).toHaveValue('28');
-        fireEvent.change(screen.getByLabelText('Tipo para descobrir'), { target: { value: 'tv' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Séries' }));
         expect(screen.getByLabelText('Gênero')).toHaveValue('');
         expect(screen.getByRole('option', { name: 'Ação e aventura' })).toHaveValue('10759');
         expect(screen.queryByRole('option', { name: 'Terror' })).not.toBeInTheDocument();

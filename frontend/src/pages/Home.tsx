@@ -1,7 +1,9 @@
-import { useCallback, useState } from 'react';
-import type { FormEvent } from 'react';
-import { ChevronLeft, ChevronRight, Clapperboard, Film, Search, SlidersHorizontal, Star } from 'lucide-react';
-import { Link, useLocation, useSearchParams } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { FormEvent, MouseEvent, RefObject } from 'react';
+import { ArrowRight, ChevronLeft, ChevronRight, Search, SlidersHorizontal, Star, X } from 'lucide-react';
+import { Link, useLocation, useNavigationType, useSearchParams } from 'react-router-dom';
+import Poster from '../components/Poster';
+import SiteHeader from '../components/SiteHeader';
 import { discoverMovies, searchMovies } from '../services/movieApi';
 import type { DiscoveryFilters } from '../types/movie';
 import { useRequest } from '../utils/useRequest';
@@ -19,7 +21,14 @@ const sorts = {
 };
 
 const defaultSort = 'popularity.desc';
-const filterClass = 'min-w-0 rounded-lg border-white/10 bg-[#17171b] text-sm text-stone-200 focus:border-orange-500 focus:ring-orange-500';
+const discoveryFields = ['genres', 'year', 'minRating', 'sortBy'] as const;
+const discoveryTypes = [
+    { value: 'movie', label: 'Filmes' },
+    { value: 'tv', label: 'Séries' },
+] as const;
+const ratingFormat = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+export type CatalogBookmark = { url: string; entry: string; cardId: string; scrollY: number };
 
 function boundedNumber(value: string | null, min: number, max: number, integer = false) {
     if (!value?.trim()) return undefined;
@@ -35,53 +44,51 @@ function addField(params: URLSearchParams, values: FormData, key: string) {
 
 function RatingFilter({ value }: { value?: number }) {
     const ratings = [...new Set([5, 6, 7, 8, 9, ...(value === undefined ? [] : [value])])].sort((a, b) => a - b);
-    return <select className={filterClass} aria-label="Nota mínima" name="minRating" defaultValue={value ?? ''}>
+    return <select className="catalog-field" aria-label="Nota mínima" name="minRating" defaultValue={value ?? ''}>
         <option value="">Qualquer nota</option>
         {ratings.map(rating => <option key={rating} value={rating}>Nota {rating}+</option>)}
     </select>;
 }
 
 function DiscoveryForm({ filters, onSubmit }: { filters: DiscoveryFilters; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
-    const [type, setType] = useState(filters.type);
-    const [genre, setGenre] = useState(filters.genres ?? '');
+    const [open, setOpen] = useState(false);
 
-    return <form onSubmit={onSubmit} className="mt-5 border-y border-white/10 py-5">
-        <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-stone-300"><SlidersHorizontal size={16} aria-hidden="true" /> Filtros</div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-            <select className={filterClass} aria-label="Tipo para descobrir" name="type" value={type} onChange={event => {
-                const nextType = event.target.value === 'tv' ? 'tv' : 'movie';
-                setType(nextType);
-                if (!genresByType[nextType].some(([id]) => id === genre)) setGenre('');
-            }}>
-                <option value="movie">Filmes</option>
-                <option value="tv">Séries</option>
-            </select>
-            <select className={filterClass} aria-label="Gênero" name="genres" value={genre} onChange={event => setGenre(event.target.value)}>
+    return <form className="discovery-form" onSubmit={event => {
+        onSubmit(event);
+        setOpen(false);
+    }}>
+        <button type="button" className="quiet-button md:hidden" aria-expanded={open} aria-controls="discovery-fields" onClick={() => setOpen(!open)}>
+            <SlidersHorizontal size={16} aria-hidden="true" /> Filtros
+        </button>
+        <div id="discovery-fields" className={(open ? 'grid' : 'hidden') + ' discovery-fields md:flex'}>
+            <select className="catalog-field" aria-label="Gênero" name="genres" defaultValue={filters.genres ?? ''}>
                 <option value="">Todos os gêneros</option>
-                {genresByType[type].map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+                {genresByType[filters.type].map(([id, name]) => <option key={id} value={id}>{name}</option>)}
             </select>
-            <input className={filterClass + ' placeholder:text-stone-400'} aria-label="Ano" name="year" type="number" min="1888" max="2100" placeholder="Ano de lançamento" defaultValue={filters.year ?? ''} />
+            <input className="catalog-field" aria-label="Ano" name="year" type="number" min="1888" max="2100" placeholder="Ano de lançamento" defaultValue={filters.year ?? ''} />
             <RatingFilter value={filters.minRating} />
-            <div className="flex min-w-0 gap-2">
-                <select className={filterClass + ' flex-1'} aria-label="Ordenação" name="sortBy" defaultValue={filters.sortBy}>
-                    {Object.entries(sorts).map(([key, name]) => <option key={key} value={key}>{name}</option>)}
-                </select>
-                <button type="submit" className="rounded-lg border border-orange-500 px-4 text-sm font-semibold text-orange-400 hover:bg-orange-500 hover:text-zinc-950">Aplicar</button>
-            </div>
+            <select className="catalog-field" aria-label="Ordenação" name="sortBy" defaultValue={filters.sortBy}>
+                {Object.entries(sorts).map(([key, name]) => <option key={key} value={key}>{name}</option>)}
+            </select>
+            <button type="submit" className="quiet-button">Aplicar</button>
         </div>
     </form>;
 }
 
-export default function Home() {
+export default function Home({ bookmarkRef }: { bookmarkRef?: RefObject<CatalogBookmark | null> } = {}) {
     const location = useLocation();
+    const navigationType = useNavigationType();
+    const heading = useRef<HTMLHeadingElement>(null);
+    const searchInput = useRef<HTMLInputElement>(null);
+    const lastFocused = useRef<string>(null);
     const [params, setParams] = useSearchParams();
     const catalogLocation = location.pathname + location.search;
     const query = params.get('query')?.trim().slice(0, 100) ?? '';
     const type = params.get('type');
-    const searchType = type === 'tv' || type === 'movie' ? type : 'all';
+    const searchType = query && (type === 'tv' || type === 'movie') ? type : 'all';
     const discoveryType = type === 'tv' ? 'tv' : 'movie';
-    const genre = params.get('genres');
-    const genres = genresByType[discoveryType].some(([id]) => id === genre) ? genre ?? undefined : undefined;
+    const genre = genresByType[discoveryType].find(([id]) => id === params.get('genres'));
+    const genres = genre?.[0];
     const year = boundedNumber(params.get('year'), 1888, 2100, true);
     const minRating = boundedNumber(params.get('minRating'), 0, 10);
     const sort = params.get('sortBy');
@@ -101,6 +108,48 @@ export default function Home() {
         const mediaType = item.media_type ?? fallbackType;
         return mediaType === 'movie' || mediaType === 'tv' ? [{ item, mediaType }] : [];
     });
+    const activeFilters = [
+        { key: 'genres', label: !query ? genre?.[1] : undefined },
+        { key: 'year', label: !query && year ? String(year) : undefined },
+        { key: 'minRating', label: minRating !== undefined ? 'Nota ' + minRating + '+' : undefined },
+        { key: 'sortBy', label: !query && sortBy !== defaultSort ? sorts[sortBy] : undefined },
+    ].filter(filter => filter.label !== undefined);
+    const selection = discoveryType === 'tv' ? 'Séries' : 'Filmes';
+    const headingText = query ? 'Resultados para “' + query + '”' : activeFilters.length ? selection + ' no catálogo' : 'Em alta agora';
+
+    useEffect(() => {
+        const saved = bookmarkRef?.current;
+        const returning = saved?.url === catalogLocation && (
+            (navigationType === 'POP' && saved.entry === location.key) || location.state?.restoreCatalog === true
+        );
+
+        if (bookmarkRef && returning && saved) {
+            if (!result) return;
+            const card = document.getElementById(saved.cardId);
+            if (card) {
+                window.scrollTo(0, saved.scrollY);
+                card.focus({ preventScroll: true });
+                const bounds = card.getBoundingClientRect();
+                if (bounds.bottom < 0 || bounds.top >= window.innerHeight) card.scrollIntoView?.({ block: 'nearest' });
+            } else {
+                heading.current?.focus({ preventScroll: true });
+                heading.current?.scrollIntoView?.({ block: 'start' });
+            }
+            bookmarkRef.current = null;
+            lastFocused.current = location.key;
+            return;
+        }
+
+        if (lastFocused.current !== location.key && navigationType !== 'POP' && location.state?.focusCatalog === true) {
+            lastFocused.current = location.key;
+            heading.current?.focus({ preventScroll: true });
+            heading.current?.scrollIntoView?.({ block: 'start' });
+        }
+    }, [bookmarkRef, catalogLocation, location.key, location.state, navigationType, result]);
+
+    function showResults(next: URLSearchParams) {
+        setParams(next, { state: { focusCatalog: true } });
+    }
 
     function submitSearch(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
@@ -108,105 +157,164 @@ export default function Home() {
         const next = new URLSearchParams();
         addField(next, values, 'query');
         if (!next.has('query')) {
-            if (query) setParams({});
+            if (query) showResults(next);
             return;
         }
         addField(next, values, 'type');
         addField(next, values, 'minRating');
-        if (!query && minRating !== undefined) next.set('minRating', String(minRating));
-        setParams(next);
+        showResults(next);
     }
 
     function submitFilters(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
         const values = new FormData(event.currentTarget);
-        const next = new URLSearchParams();
-        for (const key of ['type', 'genres', 'year', 'minRating', 'sortBy']) addField(next, values, key);
+        const next = new URLSearchParams({ type: discoveryType });
+        for (const key of discoveryFields) addField(next, values, key);
+        showResults(next);
+    }
+
+    function changeDiscoveryType(nextType: DiscoveryFilters['type']) {
+        if (nextType === discoveryType) return;
+        const next = new URLSearchParams(params);
+        next.set('type', nextType);
+        next.delete('page');
+        if (!genresByType[nextType].some(([id]) => id === genres)) next.delete('genres');
         setParams(next);
+    }
+
+    function clearFilters() {
+        showResults(new URLSearchParams({ type: discoveryType }));
+    }
+
+    function removeFilter(key: string) {
+        const next = new URLSearchParams(params);
+        next.delete(key);
+        next.delete('page');
+        showResults(next);
     }
 
     function changePage(nextPage: number) {
         const next = new URLSearchParams(params);
         if (nextPage === 1) next.delete('page');
         else next.set('page', String(nextPage));
-        setParams(next);
+        showResults(next);
     }
 
-    return <div className="bg-[#0c0c0e] text-stone-100">
-        <header className="border-b border-white/10 bg-[#101014]">
-            <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 sm:px-8">
-                <Link to="/" className="flex items-center gap-2 text-left" aria-label="CineSearch, página inicial">
-                    <span className="flex size-9 items-center justify-center rounded-lg bg-orange-500 text-zinc-950"><Film size={21} strokeWidth={2.5} aria-hidden="true" /></span>
-                    <span className="text-lg font-bold text-white">CineSearch</span>
-                </Link>
-            </div>
-        </header>
+    function rememberCard(event: MouseEvent<HTMLAnchorElement>) {
+        if (bookmarkRef && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) {
+            bookmarkRef.current = { url: catalogLocation, entry: location.key, cardId: event.currentTarget.id, scrollY: window.scrollY };
+        }
+    }
 
-        <main className="mx-auto max-w-7xl px-5 pb-14 pt-10 sm:px-8 sm:pt-16">
-            <section className="max-w-3xl">
-                <p className="mb-3 text-sm font-semibold text-orange-400">CATÁLOGO TMDB</p>
-                <h1 className="text-balance text-4xl font-bold leading-tight text-white sm:text-5xl">Encontre filmes e séries.</h1>
-                <p className="mt-4 max-w-2xl text-pretty text-base leading-7 text-stone-400">Pesquise títulos, use filtros e veja os detalhes do catálogo.</p>
-            </section>
-
-            <form key={JSON.stringify([query, searchType, minRating])} onSubmit={submitSearch} role="search" className="mt-8 flex flex-col flex-wrap gap-2 rounded-2xl border border-white/10 bg-[#17171b] p-2 shadow-lg sm:flex-row">
-                <label className="flex min-w-0 flex-1 items-center gap-3 px-3">
-                    <span className="sr-only">Busca por título, série ou ator</span>
-                    <Search size={20} className="shrink-0 text-stone-400" aria-hidden="true" />
-                    <input type="search" name="query" maxLength={100} className="min-w-0 flex-1 border-0 bg-transparent p-2 text-base text-white placeholder:text-stone-400 focus:ring-0" placeholder="Busque por título, série ou ator" defaultValue={query} />
-                </label>
-                <div className="flex flex-wrap gap-2">
-                    <select aria-label="Tipo da busca" name="type" defaultValue={searchType} className="rounded-xl border-0 bg-[#24242a] px-3 text-sm text-stone-200 focus:ring-orange-500">
+    return <>
+        <SiteHeader />
+        <main className="site-width catalog-page">
+            <section className={'catalog-hero' + (query ? ' catalog-hero-compact' : '')} aria-labelledby="catalog-heading">
+                {!query && <div className="catalog-hero-art">
+                    <img
+                        src="https://image.tmdb.org/t/p/w780/uzERcfV2rSHNhW5eViQiO9hNiA7.jpg"
+                        srcSet="https://image.tmdb.org/t/p/w500/uzERcfV2rSHNhW5eViQiO9hNiA7.jpg 500w, https://image.tmdb.org/t/p/w780/uzERcfV2rSHNhW5eViQiO9hNiA7.jpg 780w"
+                        sizes="(max-width: 640px) 60vw, 55vw"
+                        alt=""
+                        width={780}
+                        height={1170}
+                    />
+                </div>}
+                <h1 id="catalog-heading" className="display-title">{query ? 'Buscar no catálogo' : <>Descubra filmes<br />e séries.</>}</h1>
+                <form key={JSON.stringify([query, searchType, query ? minRating : undefined])} onSubmit={submitSearch} role="search" className="catalog-search">
+                    <label className="catalog-search-field">
+                        <span className="sr-only">Busca por título, série ou ator</span>
+                        <Search size={19} aria-hidden="true" />
+                        <input ref={searchInput} type="search" name="query" maxLength={100} placeholder="Título, série ou ator" defaultValue={query} />
+                    </label>
+                    <select className="catalog-field search-type" aria-label="Tipo da busca" name="type" defaultValue={searchType}>
                         <option value="all">Tudo</option><option value="movie">Filmes</option><option value="tv">Séries</option>
                     </select>
                     {query && <RatingFilter value={minRating} />}
-                    <button className="rounded-xl bg-orange-500 px-5 py-3 text-sm font-bold text-zinc-950 hover:bg-orange-400" type="submit">Buscar</button>
-                </div>
-            </form>
+                    <button className="accent-button" type="submit">Buscar</button>
+                </form>
+                {!query && <Link id="catalog-featured-duna" to="/movie/438631?type=movie" state={{ catalogLocation }} className="hero-credit" onClick={rememberCard}>
+                    Duna · 2021 <ArrowRight size={14} aria-hidden="true" />
+                </Link>}
+                {query && searchType !== 'all' && <p className="search-hint">Para buscar por ator, selecione <strong>Tudo</strong>.</p>}
+            </section>
 
             {query
-                ? <Link to="/" className="mt-4 inline-block text-sm font-semibold text-orange-400 underline underline-offset-4">Limpar busca</Link>
-                : <DiscoveryForm key={JSON.stringify([discoveryType, genres, year, minRating, sortBy])} filters={{ type: discoveryType, genres, year, minRating, sortBy }} onSubmit={submitFilters} />}
-
-            <section className="mt-10" aria-labelledby="catalog-title">
-                <div className="mb-6 flex items-end justify-between gap-4">
-                    <div>
-                        {data && totalPages > 1 && <p className="text-sm text-stone-400">Página {page} de {totalPages}</p>}
-                        <h2 id="catalog-title" className="text-balance mt-1 text-2xl font-bold text-white">{query ? 'Resultados para “' + query + '”' : 'Em alta agora'}</h2>
+                ? <Link to="/" className="text-action">Limpar busca</Link>
+                : <div className="catalog-toolbar">
+                    <div role="group" aria-label="Tipo para descobrir" className="catalog-tabs">
+                        {discoveryTypes.map(({ value, label }) => <button key={value} type="button" aria-pressed={discoveryType === value} onClick={() => changeDiscoveryType(value)}>
+                            {label}
+                        </button>)}
                     </div>
-                    {data && <span className="hidden text-sm text-stone-400 sm:block">{tiles.length} títulos nesta página</span>}
+                    <DiscoveryForm key={JSON.stringify([discoveryType, genres, year, minRating, sortBy])}
+                        filters={{ type: discoveryType, genres, year, minRating, sortBy }} onSubmit={submitFilters} />
+                </div>}
+
+            {activeFilters.length > 0 && <div className="applied-filters" role="group" aria-label="Filtros aplicados">
+                {activeFilters.map(({ key, label }) => <button key={key} className="filter-chip" type="button" aria-label={'Remover filtro ' + label} onClick={() => removeFilter(key)}>
+                    {label} <X size={14} aria-hidden="true" />
+                </button>)}
+                {!query && (!data || tiles.length > 0) && <button type="button" className="text-action" onClick={clearFilters}>Limpar filtros</button>}
+            </div>}
+
+            <section className="catalog-results" aria-labelledby="catalog-title">
+                <div className="results-heading">
+                    <h2 ref={heading} tabIndex={-1} id="catalog-title" className="section-title">{headingText}</h2>
+                    {data && totalPages > 1 && <span className="result-count">Página {page} de {totalPages}</span>}
                 </div>
-                {error && <div className="rounded-xl border border-orange-500/40 bg-orange-500/10 p-6">
-                    <p role="alert" className="font-semibold text-orange-300">{error.message}</p>
-                    <button type="button" onClick={retry} className="mt-3 text-sm font-semibold text-white underline underline-offset-4">Tentar novamente</button>
+                {error && <div className="catalog-message">
+                    <p role="alert">{error.message}</p>
+                    <button type="button" onClick={retry} className="text-action">Tentar novamente</button>
                 </div>}
                 {!result && <>
                     <p role="status" className="sr-only">Carregando catálogo…</p>
-                    <div aria-hidden="true" className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-                        {Array.from({ length: 12 }, (_, index) => <div key={index} className="aspect-[2/3] rounded-xl bg-[#202026]" />)}
+                    <div aria-hidden="true" className="poster-grid">
+                        {Array.from({ length: 6 }, (_, index) => <div key={index}><div className="title-poster" /><div className="poster-line" /></div>)}
                     </div>
                 </>}
-                {data && !tiles.length && <p role="status" className="text-stone-300">Nenhum título encontrado nesta página.</p>}
-                {data && tiles.length > 0 && <div className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-                    {tiles.map(({ item, mediaType }, index) => <Link key={mediaType + ':' + item.id} className="poster-card group min-w-0 text-left" to={'/movie/' + item.id + '?type=' + mediaType} state={{ catalogLocation }}>
-                        <div className="aspect-[2/3] overflow-hidden rounded-xl bg-[#202026] shadow-md">
-                            {item.poster_path
-                                ? <img alt="" className="h-full w-full object-cover" loading={index < 6 ? undefined : 'lazy'} src={'https://image.tmdb.org/t/p/w342' + item.poster_path} />
-                                : <div aria-hidden="true" className="flex h-full flex-col items-center justify-center gap-2 text-stone-400"><Clapperboard size={28} /><span className="text-xs">Sem pôster</span></div>}
-                        </div>
-                        <p className="mt-3 truncate font-semibold text-white group-hover:text-orange-400">{item.title || item.name || 'Sem título'}</p>
-                        <p className="mt-1 flex items-center gap-1.5 text-xs text-stone-400">
-                            {item.vote_average != null && <><Star size={13} className="fill-orange-400 text-orange-400" aria-hidden="true" /><span className="tabular-nums text-stone-300">{item.vote_average.toFixed(1)}</span><span aria-hidden="true">·</span></>}
-                            {mediaType === 'tv' ? 'Série' : 'Filme'} · {(item.release_date || item.first_air_date)?.slice(0, 4) || 'Data indisponível'}
-                        </p>
-                    </Link>)}
+                {data && !tiles.length && <div className="catalog-message">
+                    <p role="status">Nenhum título encontrado nesta página.</p>
+                    {!query && activeFilters.length > 0 && <button type="button" className="text-action" onClick={clearFilters}>Limpar filtros</button>}
+                    {query && searchType !== 'all' && <button type="button" className="text-action" onClick={() => removeFilter('type')}>Buscar em Tudo</button>}
+                    {query && searchType === 'all' && <button type="button" className="text-action" onClick={() => searchInput.current?.focus()}>Editar busca</button>}
                 </div>}
-                {data && (totalPages > 1 || page > 1) && <nav aria-label="Paginação" className="mt-12 flex items-center justify-center gap-4">
-                    <button type="button" aria-label="Página anterior" disabled={page <= 1} onClick={() => changePage(Math.min(page - 1, totalPages))} className="flex size-10 items-center justify-center rounded-lg border border-white/10 text-stone-200 disabled:opacity-30"><ChevronLeft size={19} aria-hidden="true" /></button>
-                    <span className="text-sm tabular-nums text-stone-400">{page} / {totalPages}</span>
-                    <button type="button" aria-label="Próxima página" disabled={page >= totalPages} onClick={() => changePage(page + 1)} className="flex size-10 items-center justify-center rounded-lg border border-white/10 text-stone-200 disabled:opacity-30"><ChevronRight size={19} aria-hidden="true" /></button>
+                {data && tiles.length > 0 && <div className="poster-grid">
+                    {tiles.map(({ item, mediaType }, index) => {
+                        const cardId = 'catalog-' + mediaType + '-' + item.id;
+                        const title = item.title || item.name || 'Sem título';
+                        const yearLabel = (item.release_date || item.first_air_date)?.slice(0, 4);
+                        return <Link
+                            key={cardId}
+                            id={cardId}
+                            className="poster-card"
+                            to={'/movie/' + item.id + '?type=' + mediaType}
+                            state={{ catalogLocation }}
+                            onClick={rememberCard}
+                        >
+                            <Poster path={item.poster_path} priority={index < 6}>
+                                {item.vote_average != null && <span className="poster-rating">
+                                    <Star size={12} fill="currentColor" aria-hidden="true" />
+                                    <span className="sr-only">Nota </span>{ratingFormat.format(item.vote_average)}
+                                </span>}
+                            </Poster>
+                            <h3>{title}</h3>
+                            <p className="title-meta">
+                                {mediaType === 'tv' ? 'Série' : 'Filme'}{yearLabel && ' · ' + yearLabel}
+                            </p>
+                        </Link>;
+                    })}
+                </div>}
+                {data && (totalPages > 1 || page > 1) && <nav aria-label="Paginação" className="catalog-pagination">
+                    <button type="button" aria-label="Página anterior" disabled={page <= 1} onClick={() => changePage(Math.min(page - 1, totalPages))} className="quiet-button">
+                        <ChevronLeft size={19} aria-hidden="true" /> Anterior
+                    </button>
+                    <span className="result-count">{page} / {totalPages}</span>
+                    <button type="button" aria-label="Próxima página" disabled={page >= totalPages} onClick={() => changePage(page + 1)} className="quiet-button">
+                        Próxima <ChevronRight size={19} aria-hidden="true" />
+                    </button>
                 </nav>}
             </section>
         </main>
-    </div>;
+    </>;
 }
