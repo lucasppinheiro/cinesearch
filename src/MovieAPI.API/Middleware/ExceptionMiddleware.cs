@@ -1,57 +1,40 @@
-using System.Net;
-using System.Text.Json;
 using MovieAPI.Application.Services;
 
 namespace MovieAPI.API.Middleware;
 
-public class ExceptionMiddleware
+public class ExceptionMiddleware(RequestDelegate next, ILogger<ExceptionMiddleware> logger)
 {
-    private readonly RequestDelegate _next;
-    private readonly ILogger<ExceptionMiddleware> _logger;
-    private readonly IWebHostEnvironment _env;
-
-    public ExceptionMiddleware(RequestDelegate next, ILogger<ExceptionMiddleware> logger, IWebHostEnvironment env)
-    {
-        _next = next;
-        _logger = logger;
-        _env = env;
-    }
-
     public async Task InvokeAsync(HttpContext context)
     {
         try
         {
-            await _next(context);
+            await next(context);
         }
-        catch (Exception ex)
+        catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
         {
-            _logger.LogError(ex, "Erro não tratado: {Message}", ex.Message);
-            await HandleExceptionAsync(context, ex, _env);
+            // The requester disconnected before the response was ready.
         }
-    }
-
-    private static async Task HandleExceptionAsync(HttpContext context, Exception exception, IWebHostEnvironment env)
-    {
-        context.Response.ContentType = "application/json";
-        context.Response.StatusCode = exception is TmdbRequestException tmdbException
-            ? (int)tmdbException.StatusCode
-            : (int)HttpStatusCode.InternalServerError;
-
-        var referenceId = Guid.NewGuid().ToString("N");
-
-        var response = new
+        catch (Exception exception) when (!context.Response.HasStarted)
         {
-            Success = false,
-            Message = exception is TmdbRequestException ? exception.Message : "Ocorreu um erro interno no servidor.",
-            ReferenceId = referenceId,
-            Details = env.IsDevelopment() ? exception.Message : "Detalhes omitidos por segurança. Consulte os logs usando o ReferenceId."
-        };
+            var tmdbFailure = exception as TmdbRequestException;
+            var status = tmdbFailure is null
+                ? StatusCodes.Status500InternalServerError
+                : (int)tmdbFailure.StatusCode;
+            var referenceId = context.TraceIdentifier;
 
-        var json = JsonSerializer.Serialize(response, new JsonSerializerOptions
-        {
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-        });
+            logger.Log(
+                status == StatusCodes.Status404NotFound ? LogLevel.Information : LogLevel.Error,
+                "Catalog request {ReferenceId} returned {StatusCode}, operation {Operation}, upstream status {UpstreamStatus}, error {ErrorType}",
+                referenceId, status, tmdbFailure?.Operation, tmdbFailure?.UpstreamStatusCode, exception.GetType().Name);
 
-        await context.Response.WriteAsync(json);
+            context.Response.StatusCode = status;
+            await context.Response.WriteAsJsonAsync(new
+            {
+                success = false,
+                message = tmdbFailure?.Message ?? "Ocorreu um erro interno no servidor.",
+                referenceId,
+                details = "Consulte os logs usando o identificador de referência."
+            }, context.RequestAborted);
+        }
     }
 }

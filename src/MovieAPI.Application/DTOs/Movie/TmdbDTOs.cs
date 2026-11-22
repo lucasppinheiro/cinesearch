@@ -9,7 +9,11 @@ namespace MovieAPI.Application.DTOs.Movie
         public int Page { get; set; }
 
         [JsonPropertyName("results")]
+        [JsonRequired]
         public List<TmdbMovieResult> Results { get; set; } = new();
+
+        [JsonPropertyName("total_pages")]
+        public int TotalPages { get; set; }
 
         [JsonPropertyName("total_results")]
         public int TotalResults { get; set; }
@@ -45,6 +49,7 @@ namespace MovieAPI.Application.DTOs.Movie
     public class TmdbPersonCredits
     {
         [JsonPropertyName("cast")]
+        [JsonRequired]
         public List<TmdbMovieResult> Cast { get; set; } = new();
     }
 
