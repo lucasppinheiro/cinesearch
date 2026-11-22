@@ -1,7 +1,8 @@
 import type { DiscoveryFilters, MediaType, TmdbSearchResponse, TmdbMovieDetails } from '../types/movie';
 
 const apiOrigin = import.meta.env.VITE_API_URL?.trim().replace(/\/+$/, '') ?? '';
-const API_MOVIES = `${apiOrigin}/api/movies`;
+const API_MOVIES = '/api/movies';
+const renderOrigin = 'https://cinesearch-api-61a5.onrender.com';
 
 export class ApiError extends Error {
     readonly status?: number;
@@ -12,11 +13,20 @@ export class ApiError extends Error {
     }
 }
 
-async function request<T>(url: string, signal?: AbortSignal): Promise<T> {
+async function fetchCatalog(path: string, signal?: AbortSignal): Promise<Response> {
+    try {
+        return await fetch(apiOrigin + path, { signal });
+    } catch (error) {
+        if (!(error instanceof TypeError) || signal?.aborted || apiOrigin !== renderOrigin) throw error;
+        return fetch(path, { signal });
+    }
+}
+
+async function request<T>(path: string, signal?: AbortSignal): Promise<T> {
     let response: Response;
     let body: unknown;
     try {
-        response = await fetch(url, { signal });
+        response = await fetchCatalog(path, signal);
         body = await response.json().catch(() => null);
         signal?.throwIfAborted();
     } catch (reason) {
